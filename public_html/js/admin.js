@@ -1,4 +1,4 @@
-// ===== ADMIN PANEL - JAVASCRIPT MODERNO =====
+// ===== ADMIN PANEL - JAVASCRIPT MODERNO ES6+ =====
 class AdminPanel {
     constructor() {
         this.init();
@@ -13,119 +13,201 @@ class AdminPanel {
         this.setupTables();
         this.setupFileUploads();
         this.setupNotifications();
+        this.setupRealTimeSearch();
+        console.log('✅ Admin Panel inicializado correctamente');
     }
 
     // ===== CONFIGURACIÓN DE EVENT LISTENERS =====
     setupEventListeners() {
-        // Toggle del sidebar
-        this.setupSidebarToggle();
+        // Delegación de eventos para mejor performance
+        document.addEventListener('click', this.handleGlobalClick.bind(this));
+        document.addEventListener('keydown', this.handleGlobalKeydown.bind(this));
+        document.addEventListener('submit', this.handleFormSubmit.bind(this));
+        document.addEventListener('input', this.handleGlobalInput.bind(this));
         
-        // Dropdowns de usuario
-        this.setupUserDropdowns();
-        
+        // Eventos de red
+        window.addEventListener('online', this.handleOnlineStatus.bind(this));
+        window.addEventListener('offline', this.handleOfflineStatus.bind(this));
+    }
+
+    // ===== MANEJO DE EVENTOS GLOBALES =====
+    handleGlobalClick(e) {
+        // Dropdowns
+        if (e.target.closest('.dropdown-toggle')) {
+            this.toggleDropdown(e.target.closest('.dropdown-toggle'));
+            return;
+        }
+
+        // Cerrar dropdowns al hacer clic fuera
+        if (!e.target.closest('.dropdown')) {
+            this.closeAllDropdowns();
+        }
+
         // Modales
-        this.setupModalHandlers();
-        
+        if (e.target.closest('[data-modal-target]')) {
+            const target = e.target.closest('[data-modal-target]');
+            this.openModal(target.dataset.modalTarget);
+            return;
+        }
+
+        if (e.target.classList.contains('modal')) {
+            this.closeModal(e.target);
+            return;
+        }
+
+        if (e.target.closest('.modal-close')) {
+            this.closeModal(e.target.closest('.modal'));
+            return;
+        }
+
         // Confirmaciones de eliminación
-        this.setupDeleteConfirmations();
+        if (e.target.closest('[data-delete-confirm]')) {
+            e.preventDefault();
+            const target = e.target.closest('[data-delete-confirm]');
+            this.showDeleteConfirmation(target);
+            return;
+        }
+
+        // Tabs
+        if (e.target.closest('.tab-btn')) {
+            const tabBtn = e.target.closest('.tab-btn');
+            this.switchTab(tabBtn);
+            return;
+        }
+
+        // Efecto ripple en botones
+        if (e.target.closest('.btn') || e.target.closest('.sidebar-link')) {
+            this.createRippleEffect(e);
+        }
+    }
+
+    handleGlobalKeydown(e) {
+        // Cerrar modales con ESC
+        if (e.key === 'Escape') {
+            this.closeAllModals();
+            this.closeAllDropdowns();
+        }
+
+        // Navegación con teclado en formularios
+        if (e.key === 'Enter' && e.target.closest('.modal')) {
+            const submitBtn = e.target.closest('.modal').querySelector('.btn-primary');
+            if (submitBtn && !e.target.closest('.action-buttons')) {
+                submitBtn.click();
+            }
+        }
+    }
+
+    handleFormSubmit(e) {
+        const form = e.target;
         
-        // Tabs y navegación
-        this.setupTabs();
-        
+        // Validación de formularios
+        if (form.classList.contains('needs-validation')) {
+            if (!this.validateForm(form)) {
+                e.preventDefault();
+                form.classList.add('was-validated');
+                return;
+            }
+        }
+
+        // Formularios AJAX
+        if (form.classList.contains('ajax-form')) {
+            e.preventDefault();
+            this.handleAjaxFormSubmit(form);
+            return;
+        }
+
+        // Mostrar estado de carga
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            this.showButtonLoading(submitBtn);
+        }
+    }
+
+    handleGlobalInput(e) {
         // Búsqueda en tiempo real
-        this.setupRealTimeSearch();
+        if (e.target.dataset.search) {
+            clearTimeout(this.searchTimeout);
+            this.searchTimeout = setTimeout(() => {
+                this.performSearch(e.target.value, e.target.dataset.search);
+            }, 300);
+        }
+
+        // Validación en tiempo real
+        if (e.target.classList.contains('form-control')) {
+            this.validateField(e.target);
+        }
     }
 
     // ===== SIDEBAR FUNCTIONALITY =====
     setupSidebar() {
-        const sidebar = document.getElementById('adminSidebar');
-        const menuToggle = document.getElementById('menuToggle');
-        const mainContent = document.querySelector('.admin-main');
+        this.sidebar = document.getElementById('adminSidebar');
+        this.menuToggle = document.getElementById('menuToggle');
+        this.mainContent = document.querySelector('.admin-main');
 
-        if (menuToggle && sidebar) {
-            menuToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('hidden');
-                mainContent.classList.toggle('full-width');
-                this.saveSidebarState();
-            });
+        if (this.menuToggle && this.sidebar) {
+            this.menuToggle.addEventListener('click', () => this.toggleSidebar());
         }
 
-        // Restaurar estado del sidebar
         this.restoreSidebarState();
+        this.setupSidebarResize();
     }
 
-    setupSidebarToggle() {
-        const sidebarItems = document.querySelectorAll('.sidebar-link');
-        
-        sidebarItems.forEach(item => {
-            item.addEventListener('click', (e) => {
-                if (window.innerWidth <= 768) {
-                    document.getElementById('adminSidebar')?.classList.add('hidden');
-                    document.querySelector('.admin-main')?.classList.add('full-width');
+    toggleSidebar() {
+        this.sidebar.classList.toggle('hidden');
+        this.mainContent.classList.toggle('full-width');
+        this.saveSidebarState();
+    }
+
+    setupSidebarResize() {
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                if (window.innerWidth <= 1024) {
+                    this.sidebar.classList.add('hidden');
+                    this.mainContent.classList.add('full-width');
                 }
-                
-                // Agregar efecto de ripple
-                this.createRippleEffect(e);
-            });
+            }, 250);
         });
     }
 
-    // ===== USER DROPDOWNS =====
-    setupUserDropdowns() {
-        const userGreeting = document.querySelector('.user-greeting');
-        const userDropdown = document.querySelector('.user-dropdown');
+    saveSidebarState() {
+        const isCollapsed = this.sidebar?.classList.contains('hidden');
+        localStorage.setItem('adminSidebarCollapsed', isCollapsed);
+    }
 
-        if (userGreeting && userDropdown) {
-            userGreeting.addEventListener('click', (e) => {
-                e.stopPropagation();
-                userDropdown.classList.toggle('show');
-            });
-
-            // Cerrar al hacer clic fuera
-            document.addEventListener('click', () => {
-                userDropdown.classList.remove('show');
-            });
+    restoreSidebarState() {
+        const isCollapsed = localStorage.getItem('adminSidebarCollapsed') === 'true';
+        if (this.sidebar && this.mainContent && isCollapsed) {
+            this.sidebar.classList.add('hidden');
+            this.mainContent.classList.add('full-width');
         }
+    }
+
+    // ===== DROPDOWNS =====
+    toggleDropdown(toggle) {
+        const dropdown = toggle.closest('.dropdown');
+        const menu = dropdown.querySelector('.dropdown-menu');
+        menu.classList.toggle('show');
+    }
+
+    closeAllDropdowns() {
+        document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
+            menu.classList.remove('show');
+        });
     }
 
     // ===== MODAL MANAGEMENT =====
     setupModals() {
-        this.setupModalTriggers();
-        this.setupModalCloseHandlers();
+        this.modals = document.querySelectorAll('.modal');
+        this.setupModalAccessibility();
     }
 
-    setupModalHandlers() {
-        // Modal triggers
-        document.addEventListener('click', (e) => {
-            const trigger = e.target.closest('[data-modal-target]');
-            if (trigger) {
-                const modalId = trigger.dataset.modalTarget;
-                this.openModal(modalId);
-            }
-        });
-
-        // Close modals on background click
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal')) {
-                this.closeModal(e.target);
-            }
-        });
-
-        // Close modals with ESC key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeAllModals();
-            }
-        });
-    }
-
-    setupModalCloseHandlers() {
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-close') || 
-                e.target.closest('.modal-close')) {
-                const modal = e.target.closest('.modal');
-                this.closeModal(modal);
-            }
+    setupModalAccessibility() {
+        this.modals.forEach(modal => {
+            modal.setAttribute('aria-hidden', 'true');
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-labelledby', modal.id + '-title');
         });
     }
 
@@ -133,10 +215,19 @@ class AdminPanel {
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.classList.add('show');
+            modal.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
             
+            // Trap focus inside modal
+            this.trapFocus(modal);
+            
+            // Animar entrada
+            setTimeout(() => {
+                modal.style.opacity = '1';
+            }, 10);
+            
             // Enfocar primer elemento input
-            const firstInput = modal.querySelector('input, textarea, select');
+            const firstInput = modal.querySelector('input, textarea, select, button');
             if (firstInput) firstInput.focus();
         }
     }
@@ -144,7 +235,11 @@ class AdminPanel {
     closeModal(modal) {
         if (modal) {
             modal.classList.remove('show');
+            modal.setAttribute('aria-hidden', 'true');
             document.body.style.overflow = '';
+            
+            // Liberar focus trap
+            this.releaseFocus();
         }
     }
 
@@ -154,30 +249,54 @@ class AdminPanel {
         });
     }
 
+    trapFocus(modal) {
+        const focusableElements = modal.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        modal.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                if (e.shiftKey) {
+                    if (document.activeElement === firstElement) {
+                        e.preventDefault();
+                        lastElement.focus();
+                    }
+                } else {
+                    if (document.activeElement === lastElement) {
+                        e.preventDefault();
+                        firstElement.focus();
+                    }
+                }
+            }
+        });
+    }
+
+    releaseFocus() {
+        // Restaurar focus al elemento que abrió el modal
+        const lastFocused = document.activeElement;
+        if (lastFocused && lastFocused.closest('.modal')) {
+            const opener = document.querySelector('[data-modal-target].last-focused');
+            if (opener) {
+                opener.focus();
+                opener.classList.remove('last-focused');
+            }
+        }
+    }
+
     // ===== FORM HANDLING =====
     setupForms() {
         this.setupFormValidation();
-        this.setupFormSubmissions();
         this.setupRichTextEditors();
+        this.setupFileInputs();
     }
 
     setupFormValidation() {
+        // Agregar validación HTML5 personalizada
         const forms = document.querySelectorAll('form[needs-validation]');
-        
         forms.forEach(form => {
-            form.addEventListener('submit', (e) => {
-                if (!this.validateForm(form)) {
-                    e.preventDefault();
-                    this.showFormErrors(form);
-                }
-            });
-        });
-
-        // Validación en tiempo real
-        document.querySelectorAll('.form-control').forEach(input => {
-            input.addEventListener('blur', () => {
-                this.validateField(input);
-            });
+            form.setAttribute('novalidate', 'true');
         });
     }
 
@@ -200,6 +319,7 @@ class AdminPanel {
         
         // Remover estados previos
         field.classList.remove('is-invalid', 'is-valid');
+        this.removeFieldError(field);
         
         // Validaciones básicas
         if (field.hasAttribute('required') && !value) {
@@ -211,9 +331,24 @@ class AdminPanel {
         } else if (field.type === 'url' && value && !this.isValidUrl(value)) {
             isValid = false;
             this.showFieldError(field, 'Por favor ingresa una URL válida');
-        } else if (field.hasAttribute('minlength') && value.length < field.getAttribute('minlength')) {
+        } else if (field.hasAttribute('minlength') && value.length < parseInt(field.getAttribute('minlength'))) {
             isValid = false;
             this.showFieldError(field, `Mínimo ${field.getAttribute('minlength')} caracteres`);
+        } else if (field.hasAttribute('maxlength') && value.length > parseInt(field.getAttribute('maxlength'))) {
+            isValid = false;
+            this.showFieldError(field, `Máximo ${field.getAttribute('maxlength')} caracteres`);
+        } else if (field.type === 'number') {
+            const min = field.getAttribute('min');
+            const max = field.getAttribute('max');
+            const numValue = parseFloat(value);
+            
+            if (min && numValue < parseFloat(min)) {
+                isValid = false;
+                this.showFieldError(field, `El valor mínimo permitido es ${min}`);
+            } else if (max && numValue > parseFloat(max)) {
+                isValid = false;
+                this.showFieldError(field, `El valor máximo permitido es ${max}`);
+            }
         }
         
         if (isValid && value) {
@@ -226,47 +361,28 @@ class AdminPanel {
     showFieldError(field, message) {
         field.classList.add('is-invalid');
         
-        // Remover mensaje de error anterior
-        const existingError = field.parentNode.querySelector('.invalid-feedback');
-        if (existingError) existingError.remove();
-        
-        // Crear nuevo mensaje de error
         const errorDiv = document.createElement('div');
         errorDiv.className = 'invalid-feedback';
         errorDiv.textContent = message;
         field.parentNode.appendChild(errorDiv);
+        
+        // Scroll al campo con error
+        field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        field.focus();
     }
 
-    showFormErrors(form) {
-        const firstInvalid = form.querySelector('.is-invalid');
-        if (firstInvalid) {
-            firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            firstInvalid.focus();
-        }
-    }
-
-    setupFormSubmissions() {
-        document.addEventListener('submit', async (e) => {
-            const form = e.target;
-            
-            if (form.classList.contains('ajax-form')) {
-                e.preventDefault();
-                await this.handleAjaxFormSubmit(form);
-            }
-        });
+    removeFieldError(field) {
+        const existingError = field.parentNode.querySelector('.invalid-feedback');
+        if (existingError) existingError.remove();
     }
 
     async handleAjaxFormSubmit(form) {
         const submitBtn = form.querySelector('button[type="submit"]');
-        const originalText = submitBtn?.textContent;
+        const originalText = submitBtn?.innerHTML;
         
         try {
             // Mostrar estado de carga
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.classList.add('loading');
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
-            }
+            this.showButtonLoading(submitBtn);
             
             const formData = new FormData(form);
             const response = await fetch(form.action, {
@@ -282,21 +398,32 @@ class AdminPanel {
             if (result.success) {
                 this.showNotification(result.message || '¡Operación exitosa!', 'success');
                 
-                // Redireccionar si se especifica
+                // Manejar redirecciones
                 if (result.redirect) {
                     setTimeout(() => {
                         window.location.href = result.redirect;
                     }, 1500);
                 }
                 
-                // Recargar si se especifica
+                // Recargar página
                 if (result.reload) {
                     setTimeout(() => {
                         window.location.reload();
                     }, 1500);
                 }
+                
+                // Limpiar formulario
+                if (result.clearForm) {
+                    form.reset();
+                }
+                
             } else {
                 this.showNotification(result.message || 'Error en la operación', 'error');
+                
+                // Mostrar errores de campo específicos
+                if (result.errors) {
+                    this.showFormErrors(form, result.errors);
+                }
             }
             
         } catch (error) {
@@ -304,16 +431,21 @@ class AdminPanel {
             this.showNotification('Error de conexión. Intenta nuevamente.', 'error');
         } finally {
             // Restaurar botón
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.classList.remove('loading');
-                submitBtn.textContent = originalText;
-            }
+            this.hideButtonLoading(submitBtn, originalText);
         }
     }
 
+    showFormErrors(form, errors) {
+        Object.keys(errors).forEach(fieldName => {
+            const field = form.querySelector(`[name="${fieldName}"]`);
+            if (field) {
+                this.showFieldError(field, errors[fieldName]);
+            }
+        });
+    }
+
     setupRichTextEditors() {
-        // Inicializar editores ricos si TinyMCE está disponible
+        // Inicializar TinyMCE si está disponible
         if (typeof tinymce !== 'undefined') {
             const editors = document.querySelectorAll('.rich-editor');
             editors.forEach((editor, index) => {
@@ -363,19 +495,26 @@ class AdminPanel {
         }
     }
 
+    setupFileInputs() {
+        document.addEventListener('change', (e) => {
+            if (e.target.type === 'file') {
+                this.previewFile(e.target.files[0], e.target);
+            }
+        });
+    }
+
     // ===== TABLE FUNCTIONALITY =====
     setupTables() {
         this.setupTableSorting();
         this.setupTableFilters();
         this.setupBulkActions();
+        this.setupResponsiveTables();
     }
 
     setupTableSorting() {
         document.querySelectorAll('.admin-table th[data-sort]').forEach(header => {
             header.style.cursor = 'pointer';
-            header.addEventListener('click', () => {
-                this.sortTable(header);
-            });
+            header.addEventListener('click', () => this.sortTable(header));
         });
     }
 
@@ -394,7 +533,8 @@ class AdminPanel {
         header.classList.toggle('sort-asc', !isAscending);
         header.classList.toggle('sort-desc', isAscending);
         
-        const rows = Array.from(table.querySelectorAll('tbody tr'));
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
         
         rows.sort((a, b) => {
             const aValue = a.children[columnIndex].textContent.trim();
@@ -411,10 +551,21 @@ class AdminPanel {
             return isAscending ? -comparison : comparison;
         });
         
-        // Reordenar filas
-        const tbody = table.querySelector('tbody');
-        tbody.innerHTML = '';
-        rows.forEach(row => tbody.appendChild(row));
+        // Reordenar filas con animación
+        this.animateTableSort(tbody, rows);
+    }
+
+    animateTableSort(tbody, rows) {
+        tbody.style.opacity = '0.5';
+        
+        setTimeout(() => {
+            tbody.innerHTML = '';
+            rows.forEach(row => tbody.appendChild(row));
+            
+            setTimeout(() => {
+                tbody.style.opacity = '1';
+            }, 50);
+        }, 200);
     }
 
     setupTableFilters() {
@@ -432,22 +583,82 @@ class AdminPanel {
         const searchTerm = searchInput.value.toLowerCase();
         const rows = table.querySelectorAll('tbody tr');
         
+        let visibleCount = 0;
+        
         rows.forEach(row => {
             const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(searchTerm) ? '' : 'none';
+            const isVisible = text.includes(searchTerm);
+            row.style.display = isVisible ? '' : 'none';
+            
+            if (isVisible) {
+                visibleCount++;
+                row.classList.add('fade-in');
+            } else {
+                row.classList.remove('fade-in');
+            }
         });
+        
+        // Mostrar mensaje si no hay resultados
+        this.updateTableEmptyState(table, visibleCount);
+    }
+
+    updateTableEmptyState(table, visibleCount) {
+        let emptyRow = table.querySelector('.no-results-message');
+        
+        if (visibleCount === 0 && !emptyRow) {
+            emptyRow = document.createElement('tr');
+            emptyRow.className = 'no-results-message';
+            emptyRow.innerHTML = `
+                <td colspan="100" class="text-center p-6">
+                    <div class="text-gray-500">
+                        <i class="fas fa-search fa-2x mb-2"></i>
+                        <p>No se encontraron resultados</p>
+                    </div>
+                </td>
+            `;
+            table.querySelector('tbody').appendChild(emptyRow);
+        } else if (visibleCount > 0 && emptyRow) {
+            emptyRow.remove();
+        }
     }
 
     setupBulkActions() {
         const bulkSelect = document.querySelector('.bulk-select');
         const bulkActions = document.querySelector('.bulk-actions');
         
-        if (bulkSelect) {
+        if (bulkSelect && bulkActions) {
             bulkSelect.addEventListener('change', (e) => {
                 const checkboxes = document.querySelectorAll('.row-select:checked');
                 bulkActions.style.display = checkboxes.length > 0 ? 'flex' : 'none';
             });
         }
+    }
+
+    setupResponsiveTables() {
+        // Hacer tablas responsivas en móviles
+        if (window.innerWidth <= 768) {
+            document.querySelectorAll('.admin-table').forEach(table => {
+                if (!table.classList.contains('responsive')) {
+                    this.makeTableResponsive(table);
+                }
+            });
+        }
+    }
+
+    makeTableResponsive(table) {
+        const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent);
+        const rows = table.querySelectorAll('tbody tr');
+        
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            cells.forEach((cell, index) => {
+                if (headers[index]) {
+                    cell.setAttribute('data-label', headers[index]);
+                }
+            });
+        });
+        
+        table.classList.add('responsive');
     }
 
     // ===== FILE UPLOAD HANDLING =====
@@ -482,14 +693,10 @@ class AdminPanel {
     }
 
     setupFilePreviews() {
-        document.addEventListener('change', (e) => {
-            if (e.target.type === 'file' && e.target.files.length > 0) {
-                this.previewFile(e.target.files[0], e.target);
-            }
-        });
+        // Ya configurado en setupFileInputs
     }
 
-    handleFileUpload(file, uploadZone) {
+    async handleFileUpload(file, uploadZone) {
         const formData = new FormData();
         formData.append('archivo', file);
         
@@ -497,12 +704,13 @@ class AdminPanel {
         const progress = this.createUploadProgress();
         uploadZone.appendChild(progress);
         
-        fetch('../admin/gestion-medios.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
+        try {
+            const response = await fetch('../admin/gestion-medios.php', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
             progress.remove();
             
             if (data.success) {
@@ -512,12 +720,11 @@ class AdminPanel {
             } else {
                 this.showNotification(data.error || 'Error al subir archivo', 'error');
             }
-        })
-        .catch(error => {
+        } catch (error) {
             progress.remove();
             this.showNotification('Error de conexión', 'error');
             console.error('Upload error:', error);
-        });
+        }
     }
 
     createUploadProgress() {
@@ -574,7 +781,6 @@ class AdminPanel {
 
     // ===== NOTIFICATION SYSTEM =====
     setupNotifications() {
-        // Sistema de notificaciones toast
         this.notificationContainer = this.createNotificationContainer();
         document.body.appendChild(this.notificationContainer);
     }
@@ -592,7 +798,7 @@ class AdminPanel {
             <div class="notification-content">
                 <span class="notification-icon">${this.getNotificationIcon(type)}</span>
                 <span class="notification-message">${message}</span>
-                <button class="notification-close">&times;</button>
+                <button class="notification-close" aria-label="Cerrar notificación">&times;</button>
             </div>
         `;
         
@@ -636,16 +842,6 @@ class AdminPanel {
     }
 
     // ===== DELETE CONFIRMATIONS =====
-    setupDeleteConfirmations() {
-        document.addEventListener('click', (e) => {
-            const deleteBtn = e.target.closest('[data-delete-confirm]');
-            if (deleteBtn) {
-                e.preventDefault();
-                this.showDeleteConfirmation(deleteBtn);
-            }
-        });
-    }
-
     showDeleteConfirmation(deleteBtn) {
         const message = deleteBtn.dataset.deleteConfirm || '¿Estás seguro de que quieres eliminar este elemento?';
         const confirmText = deleteBtn.dataset.confirmText || 'Eliminar';
@@ -680,6 +876,8 @@ class AdminPanel {
                 window.location.href = deleteBtn.href;
             } else if (deleteBtn.tagName === 'BUTTON' && deleteBtn.form) {
                 deleteBtn.form.submit();
+            } else if (deleteBtn.onclick) {
+                deleteBtn.onclick();
             }
         });
         
@@ -695,18 +893,6 @@ class AdminPanel {
     }
 
     // ===== TAB SYSTEM =====
-    setupTabs() {
-        document.querySelectorAll('.tab-nav').forEach(nav => {
-            nav.addEventListener('click', (e) => {
-                const tabBtn = e.target.closest('.tab-btn');
-                if (tabBtn) {
-                    e.preventDefault();
-                    this.switchTab(tabBtn);
-                }
-            });
-        });
-    }
-
     switchTab(tabBtn) {
         const tabContainer = tabBtn.closest('.tabs');
         const tabId = tabBtn.dataset.tab;
@@ -722,28 +908,29 @@ class AdminPanel {
         // Activar tab seleccionado
         tabBtn.classList.add('active');
         const targetPane = tabContainer.querySelector(`#${tabId}`);
-        if (targetPane) targetPane.classList.add('active');
+        if (targetPane) {
+            targetPane.classList.add('active');
+            targetPane.classList.add('fade-in');
+        }
     }
 
     // ===== REAL-TIME SEARCH =====
     setupRealTimeSearch() {
-        const searchInputs = document.querySelectorAll('[data-search]');
-        
-        searchInputs.forEach(input => {
-            let timeout;
-            input.addEventListener('input', (e) => {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => {
-                    this.performSearch(e.target.value, e.target.dataset.search);
-                }, 300);
-            });
-        });
+        // Ya configurado en handleGlobalInput
     }
 
     performSearch(query, searchType) {
-        // Implementar búsqueda en tiempo real según el tipo
-        console.log(`Searching for: ${query} in ${searchType}`);
+        console.log(`Buscando: "${query}" en ${searchType}`);
         // Aquí se puede implementar AJAX para búsquedas en tiempo real
+    }
+
+    // ===== STATUS Y CONEXIÓN =====
+    handleOnlineStatus() {
+        this.showNotification('Conexión restaurada', 'success', 3000);
+    }
+
+    handleOfflineStatus() {
+        this.showNotification('Estás trabajando sin conexión', 'warning', 0);
     }
 
     // ===== UTILITY METHODS =====
@@ -762,25 +949,30 @@ class AdminPanel {
         if (ripple) ripple.remove();
         
         btn.appendChild(circle);
-    }
-
-    saveSidebarState() {
-        const sidebar = document.getElementById('adminSidebar');
-        const isCollapsed = sidebar?.classList.contains('hidden');
-        localStorage.setItem('adminSidebarCollapsed', isCollapsed);
-    }
-
-    restoreSidebarState() {
-        const isCollapsed = localStorage.getItem('adminSidebarCollapsed') === 'true';
-        const sidebar = document.getElementById('adminSidebar');
-        const mainContent = document.querySelector('.admin-main');
         
-        if (sidebar && mainContent) {
-            if (isCollapsed) {
-                sidebar.classList.add('hidden');
-                mainContent.classList.add('full-width');
+        setTimeout(() => {
+            if (circle.parentNode === btn) {
+                btn.removeChild(circle);
             }
-        }
+        }, 600);
+    }
+
+    showButtonLoading(button) {
+        if (!button) return;
+        
+        button.disabled = true;
+        button.classList.add('loading');
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+        button.dataset.originalHtml = originalHTML;
+    }
+
+    hideButtonLoading(button, originalHTML = null) {
+        if (!button) return;
+        
+        button.disabled = false;
+        button.classList.remove('loading');
+        button.innerHTML = originalHTML || button.dataset.originalHtml || 'Enviar';
     }
 
     isValidEmail(email) {
@@ -797,7 +989,7 @@ class AdminPanel {
         }
     }
 
-    // ===== STATIC METHODS FOR GLOBAL ACCESS =====
+    // ===== MÉTODOS ESTÁTICOS PARA ACCESO GLOBAL =====
     static showLoading(selector) {
         const element = document.querySelector(selector);
         if (element) {
@@ -829,44 +1021,56 @@ class AdminPanel {
             currency: currency
         }).format(amount);
     }
+
+    static formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
 }
 
 // ===== INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', () => {
+    // Inicializar el panel de administración
     window.adminPanel = new AdminPanel();
     
     // Exponer métodos útiles globalmente
     window.showNotification = (message, type) => window.adminPanel.showNotification(message, type);
     window.formatDate = AdminPanel.formatDate;
     window.formatCurrency = AdminPanel.formatCurrency;
+    window.formatFileSize = AdminPanel.formatFileSize;
+    
+    console.log('🚀 Panel de Administración cargado y listo');
 });
 
-// ===== GLOBAL EVENT HANDLERS =====
-document.addEventListener('click', (e) => {
-    // Dropdown menus
-    if (e.target.classList.contains('dropdown-toggle')) {
-        const dropdown = e.target.closest('.dropdown');
-        dropdown.querySelector('.dropdown-menu').classList.toggle('show');
-    } else {
-        // Cerrar todos los dropdowns al hacer clic fuera
-        document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
-            menu.classList.remove('show');
-        });
+// ===== ERROR HANDLING GLOBAL =====
+window.addEventListener('error', (e) => {
+    console.error('Error global:', e.error);
+    if (window.adminPanel) {
+        window.adminPanel.showNotification('Ha ocurrido un error inesperado', 'error');
     }
 });
 
-// Prevenir envío de formularios inválidos
-document.addEventListener('submit', (e) => {
-    const form = e.target;
-    if (form.classList.contains('needs-validation') && !form.checkValidity()) {
-        e.preventDefault();
-        e.stopPropagation();
-        form.classList.add('was-validated');
+// ===== UNHANDLED PROMISE REJECTIONS =====
+window.addEventListener('unhandledrejection', (e) => {
+    console.error('Promise rejection:', e.reason);
+    if (window.adminPanel) {
+        window.adminPanel.showNotification('Error en operación asíncrona', 'error');
     }
 });
+
+// ===== PERFORMANCE MONITORING =====
+if ('performance' in window) {
+    window.addEventListener('load', () => {
+        const perfData = performance.getEntriesByType('navigation')[0];
+        console.log('Tiempo de carga:', perfData.loadEventEnd - perfData.fetchStart, 'ms');
+    });
+}
 
 // ===== SERVICE WORKER PARA CACHÉ (OPCIONAL) =====
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && window.location.hostname !== 'localhost') {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/admin-sw.js')
             .then(registration => {
@@ -875,28 +1079,5 @@ if ('serviceWorker' in navigator) {
             .catch(registrationError => {
                 console.log('SW registration failed: ', registrationError);
             });
-    });
-}
-
-// ===== OFFLINE DETECTION =====
-window.addEventListener('online', () => {
-    window.adminPanel?.showNotification('Conexión restaurada', 'success');
-});
-
-window.addEventListener('offline', () => {
-    window.adminPanel?.showNotification('Estás trabajando sin conexión', 'warning');
-});
-
-// ===== ERROR HANDLING GLOBAL =====
-window.addEventListener('error', (e) => {
-    console.error('Error global:', e.error);
-    window.adminPanel?.showNotification('Ha ocurrido un error inesperado', 'error');
-});
-
-// ===== PERFORMANCE MONITORING =====
-if ('performance' in window) {
-    window.addEventListener('load', () => {
-        const perfData = performance.getEntriesByType('navigation')[0];
-        console.log('Tiempo de carga:', perfData.loadEventEnd - perfData.fetchStart, 'ms');
     });
 }
